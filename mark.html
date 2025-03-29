@@ -226,9 +226,9 @@
         #video {
             width: 100%;
             height: 300px;
-            object-fit: contain;
+            object-fit: cover;
             display: block;
-            transform: scaleX(-1); /* 镜像翻转 */
+            /* 移除镜像翻转 */
         }
 
         .camera-overlay {
@@ -351,7 +351,9 @@
         currentPosition: null,
         videoStream: null,
         scanActive: false,
-        scanInterval: null
+        scanInterval: null,
+        canvas: document.createElement('canvas'),
+        ctx: null
     };
 
     // DOM元素缓存
@@ -371,6 +373,9 @@
         addressCode: document.getElementById('addressCode'),
         markCount: document.getElementById('markCount')
     };
+
+    // 初始化Canvas上下文
+    state.ctx = state.canvas.getContext('2d', { willReadFrequently: true });
 
     // 初始化事件监听
     function initEventListeners() {
@@ -520,8 +525,6 @@
     }
 
     function startQRScanner() {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         let lastScanTime = 0;
 
         const scanFrame = () => {
@@ -542,16 +545,24 @@
             }
 
             // 设置画布尺寸
-            canvas.width = elements.video.videoWidth;
-            canvas.height = elements.video.videoHeight;
+            state.canvas.width = elements.video.videoWidth;
+            state.canvas.height = elements.video.videoHeight;
 
-            // 绘制视频帧
-            ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
+            // 绘制视频帧（不再镜像翻转）
+            state.ctx.drawImage(elements.video, 0, 0, state.canvas.width, state.canvas.height);
 
             // 扫码识别
             try {
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
+                const code = jsQR(
+                    imageData.data, 
+                    imageData.width, 
+                    imageData.height,
+                    {
+                        inversionAttempts: 'dontInvert', // 重要：不尝试反转图像
+                        canOverwriteImage: false
+                    }
+                );
                 
                 if (code) {
                     handleQRCodeDetected(code.data);
@@ -571,8 +582,9 @@
         showMessage(`识别成功: ${code}`, 'success');
         stopScanning();
         
-        // 这里添加处理二维码数据的逻辑
-        // 例如：elements.addressCode.textContent = code;
+        // 更新UI显示识别的二维码内容
+        elements.addressCode.textContent = code;
+        elements.coordinates.classList.add('show');
     }
 
     function stopScanning() {
