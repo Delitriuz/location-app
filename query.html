@@ -270,29 +270,29 @@ async function searchAddress() {
     
     if (!address) {
         showMessage('请输入有效的地址码', 'error');
-        return;
+        return;  // ✅ 正确结束 if 块
+    }  // 添加这行闭合
 
+    showMessage('查询中...', 'info');
+    resultDiv.classList.remove('show');
 
-        showMessage('查询中...', 'info');
-        resultDiv.classList.remove('show');
+    try {
+        const data = await fetchData();
+        if (!data) return;
 
-        try {
-            const data = await fetchData();
-            if (!data) return;
-
-            if (data[address]) {
-                document.getElementById('resultLat').textContent = data[address].lat.toFixed(6);
-                document.getElementById('resultLng').textContent = data[address].lng.toFixed(6);
-                document.getElementById('resultCount').textContent = data[address].count;
-                resultDiv.classList.add('show');
-                showMessage('查询成功', 'success');
-            } else {
-                showMessage('地址码不存在', 'error');
-            }
-        } catch (error) {
-            showMessage('查询失败: ' + error.message, 'error');
+        if (data[address]) {
+            document.getElementById('resultLat').textContent = data[address].lat.toFixed(6);
+            document.getElementById('resultLng').textContent = data[address].lng.toFixed(6);
+            document.getElementById('resultCount').textContent = data[address].count;
+            resultDiv.classList.add('show');
+            showMessage('查询成功', 'success');
+        } else {
+            showMessage('地址码不存在', 'error');
         }
+    } catch (error) {
+        showMessage('查询失败: ' + error.message, 'error');
     }
+}  // 确保函数闭合
 
     async function exportExcel() {
         const button = document.querySelector('.copy-button');
