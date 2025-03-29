@@ -1,1 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>位置查询</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+    <style>
+        /* 完全保持与 index.html 一致的样式 */
+        @font-face {
+            font-family: 'SF Pro';
+            src: local('SF Pro Display'), local('San Francisco Display');
+            font-weight: 400;
+        }
+        
+        :root {
+            --system-blue: #007AFF;
+            --system-gray-6: #F2F2F7;
+            --system-gray-5: #E5E5EA;
+            --system-gray-3: #C7C7CC;
+            --system-red: #FF3B30;
+            --system-green: #34C759;
+            --label-primary: #000000;
+            --label-secondary: #3C3C4399;
+            --background-primary: #FFFFFF;
+            --background-secondary: #F2F2F7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--background-secondary);
+            color: var(--label-primary);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+            border: 0.5px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .header-icon {
+            width: 28px;
+            height: 28px;
+            background-color: var(--system-blue);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+
+        .header-icon svg {
+            width: 16px;
+            height: 16px;
+            fill: white;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.4px;
+        }
+
+        .action-button {
+            width: 100%;
+            padding: 16px;
+            background: var(--system-blue);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-button:active {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
+
+        .action-button.loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.3), 
+                transparent);
+            animation: loadingShimmer 1.5s infinite;
+        }
+
+        /* 新增输入框样式 */
+        .input-field {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--system-gray-3);
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--system-blue);
+            box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+        }
+
+        /* 结果展示区域 */
+        #result {
+            margin-top: 20px;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.4, 1);
+        }
+
+        #result.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .coordinate-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--system-gray-5);
+        }
+
+        .coordinate-label {
+            color: var(--label-secondary);
+            font-size: 15px;
+        }
+
+        .coordinate-value {
+            font-family: 'SF Mono', monospace;
+            font-size: 15px;
+            letter-spacing: -0.2px;
+        }
+
+        /* 提示信息 */
+        .message {
+            font-size: 15px;
+            text-align: center;
+            padding: 12px;
+            border-radius: 12px;
+            display: block;
+            opacity: 0;
+            transform: translateY(-10px);
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
+            height: 0;
+            margin: 0;
+        }
+
+        .message.visible {
+            opacity: 1;
+            transform: translateY(0);
+            visibility: visible;
+            height: auto;
+            margin-top: 16px;
+        }
+
+        .error-message {
+            color: var(--system-red);
+            background: rgba(255, 59, 48, 0.1);
+        }
+
+        .success-message {
+            color: var(--system-green);
+            background: rgba(52, 199, 89, 0.1);
+        }
+
+        @keyframes loadingShimmer {
+            0% { transform: translateX(-100%) }
+            100% { transform: translateX(100%) }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
+                </svg>
+            </div>
+            <h1 class="title">位置查询</h1>
+        </div>
+
+        <input type="text" 
+               id="addressInput" 
+               class="input-field" 
+               placeholder="输入地址码"
+               autocorrect="off"
+               spellcheck="false">
+
+        <button class="action-button" onclick="searchAddress()">
+            立即查询
+        </button>
+
+        <button class="action-button copy-button" 
+                style="margin-top:12px;" 
+                onclick="exportExcel()">
+            导出全部数据
+        </button>
+
+        <div id="result">
+            <div class="coordinate-item">
+                <span class="coordinate-label">纬度</span>
+                <span id="resultLat" class="coordinate-value">--</span>
+            </div>
+            <div class="coordinate-item">
+                <span class="coordinate-label">经度</span>
+                <span id="resultLng" class="coordinate-value">--</span>
+            </div>
+            <div class="coordinate-item">
+                <span class="coordinate-label">标注次数</span>
+                <span id="resultCount" class="coordinate-value">--</span>
+            </div>
+        </div>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <script>
+    const REPO = 'Delitriuz/location-app';
+    const TOKEN = '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';
+
+    async function fetchData() {
+        try {
+            const response = await fetch(
+                `https://api.github.com/repos/${REPO}/contents/data/locations.json`,
+                { headers: { Authorization: `token ${TOKEN}` } }
+            );
+            
+            if (!response.ok) throw new Error('数据获取失败');
+            
+            const { content } = await response.json();
+            return JSON.parse(atob(content));
+        } catch (error) {
+            showMessage('数据加载失败: ' + error.message, 'error');
+            return null;
+        }
+    }
+
+    async function searchAddress() {
+        const address = document.getElementById('addressInput').value.trim();
+        const resultDiv = document.getElementById('result');
+        
+        if (!address) {
+            showMessage('请输入有效的地址码', 'error');
+            return;
+        }
+
+        showMessage('查询中...', 'info');
+        resultDiv.classList.remove('show');
+
+        try {
+            const data = await fetchData();
+            if (!data) return;
+
+            if (data[address]) {
+                document.getElementById('resultLat').textContent = data[address].lat.toFixed(6);
+                document.getElementById('resultLng').textContent = data[address].lng.toFixed(6);
+                document.getElementById('resultCount').textContent = data[address].count;
+                resultDiv.classList.add('show');
+                showMessage('查询成功', 'success');
+            } else {
+                showMessage('地址码不存在', 'error');
+            }
+        } catch (error) {
+            showMessage('查询失败: ' + error.message, 'error');
+        }
+    }
+
+    async function exportExcel() {
+        const button = document.querySelector('.copy-button');
+        button.classList.add('loading');
+        
+        try {
+            const data = await fetchData();
+            if (!data) return;
+
+            // 准备数据
+            const worksheetData = [
+                ['地址码', '纬度', '经度', '标注次数'],
+                ...Object.entries(data).map(([code, info]) => [
+                    code,
+                    info.lat.toFixed(6),
+                    info.lng.toFixed(6),
+                    info.count
+                ])
+            ];
+
+            // 创建工作簿
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+            
+            // 设置列宽
+            worksheet['!cols'] = [
+                { wch: 25 },  // 地址码
+                { wch: 15 },  // 纬度
+                { wch: 15 },  // 经度
+                { wch: 12 }   // 标注次数
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, "位置数据");
+            
+            // 生成并下载文件
+            XLSX.writeFile(workbook, '位置数据.xlsx');
+            showMessage('导出成功', 'success');
+        } catch (error) {
+            showMessage('导出失败: ' + error.message, 'error');
+        } finally {
+            button.classList.remove('loading');
+        }
+    }
+
+    function showMessage(text, type) {
+        const message = document.getElementById('message');
+        message.textContent = text;
+        message.className = `message ${type}-message`;
+        void message.offsetHeight; // 触发重绘
+        message.classList.add('visible');
+
+        if (type === 'success') {
+            setTimeout(() => {
+                message.classList.remove('visible');
+                setTimeout(() => message.textContent = '', 300);
+            }, 1500);
+        }
+    }
+    </script>
+</body>
+</html>
 
