@@ -2,10 +2,12 @@ name: Data Sync
 
 on:
   push:
-    paths:
-      - 'data/locations.json' # 仅当数据文件变更时触发
-  repository_dispatch: # 允许API触发
+    paths: ['data/locations.json']
+  schedule:
+    - cron: '0 */6 * * *' # 每6小时保底同步
+  repository_dispatch:
     types: [data_updated]
+
 
 jobs:
   sync:
