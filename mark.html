@@ -3,23 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>位置标注系统</title>
-    <!-- 高德地图动态加载 -->
-    <script>
-    function loadAMap() {
-        if(!window.AMap) {
-            const script = document.createElement('script');
-            script.src = 'https://webapi.amap.com/maps?v=2.0&key=5093d18edf40dafdd4070e638e322309';
-            script.onerror = () => setTimeout(loadAMap, 3000);
-            document.head.appendChild(script);
-        }
-    }
-    loadAMap();
-    </script>
-    <!-- QR解码库 -->
+    <title>智能位置标注系统</title>
+    <script src="https://webapi.amap.com/maps?v=2.0&key=5093d18edf40dafdd4070e638e322309"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* 优化后的完整样式 */
+        /* 完整UI样式 */
         :root {
             --system-blue: #007AFF;
             --system-gray-6: #F2F2F7;
@@ -223,6 +211,7 @@
             background: rgba(255, 149, 0, 0.1);
         }
 
+        /* 摄像头界面优化 */
         #cameraContainer {
             margin-top: 16px;
             border-radius: 14px;
@@ -231,14 +220,15 @@
             border: 0.5px solid rgba(0, 0, 0, 0.08);
             display: none;
             position: relative;
+            background: black;
         }
 
         #video {
             width: 100%;
             height: 300px;
-            object-fit: cover;
-            background: #000;
+            object-fit: contain;
             display: block;
+            transform: scaleX(-1); /* 镜像翻转 */
         }
 
         .camera-overlay {
@@ -252,14 +242,42 @@
             justify-content: center;
             align-items: center;
             color: white;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             font-size: 16px;
             text-align: center;
             padding: 20px;
+            z-index: 10;
         }
 
         .camera-overlay.hidden {
             display: none;
+        }
+
+        .scan-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 200px;
+            border: 2px solid var(--system-green);
+            border-radius: 8px;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: var(--system-green);
+            animation: scan 2s infinite linear;
+            z-index: 6;
+        }
+
+        @keyframes scan {
+            0% { top: 0 }
+            100% { top: 100% }
         }
     </style>
 </head>
@@ -271,15 +289,15 @@
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
                 </svg>
             </div>
-            <h1 class="title">位置标注系统</h1>
+            <h1 class="title">智能位置标注</h1>
         </div>
 
         <div style="display: grid; gap: 12px;">
             <button id="locationButton" class="action-button">
-                获取我的位置
+                <span class="button-text">获取我的位置</span>
             </button>
             <button id="markButton" class="action-button">
-                标注位置
+                <span class="button-text">标注位置</span>
             </button>
         </div>
 
@@ -302,15 +320,18 @@
             </div>
             <div class="coordinate-item" style="border-bottom: none; margin-top: 12px;">
                 <button id="copyButton" class="action-button copy-button">
-                    复制坐标
+                    <span class="button-text">复制坐标</span>
                 </button>
             </div>
         </div>
 
+        <!-- 改进的摄像头界面 -->
         <div id="cameraContainer" class="card">
-            <video id="video"></video>
+            <div class="scan-frame"></div>
+            <div class="scan-line"></div>
+            <video id="video" playsinline></video>
             <div id="cameraOverlay" class="camera-overlay">
-                <p>摄像头已授权但视频未播放</p>
+                <p>请将二维码放入扫描框内</p>
                 <button id="resumeButton" class="action-button" style="margin-top: 16px; width: auto;">
                     点击继续
                 </button>
@@ -330,13 +351,7 @@
         currentPosition: null,
         videoStream: null,
         scanActive: false,
-        cameraAllowed: false
-    };
-
-    // GitHub配置
-    const config = {
-        REPO: 'Delitriuz/location-app',
-        TOKEN: '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'
+        scanInterval: null
     };
 
     // DOM元素缓存
@@ -360,20 +375,13 @@
     // 初始化事件监听
     function initEventListeners() {
         elements.locationButton.addEventListener('click', getLocation);
-        elements.markButton.addEventListener('click', startScan);
+        elements.markButton.addEventListener('click', toggleScan);
         elements.copyButton.addEventListener('click', copyCoordinates);
         elements.resumeButton.addEventListener('click', resumeVideoPlayback);
-        elements.video.addEventListener('click', () => elements.video.play().catch(handleVideoError));
-    }
-
-    // 设备兼容性检测
-    function checkDeviceCompatibility() {
-        if (!navigator.mediaDevices?.getUserMedia) {
-            showMessage('当前浏览器不支持摄像头功能', 'error');
-        }
-        if (!navigator.geolocation) {
-            showMessage('当前浏览器不支持地理定位', 'error');
-        }
+        
+        // 防止视频全屏
+        elements.video.addEventListener('click', e => e.preventDefault());
+        elements.video.addEventListener('dblclick', e => e.preventDefault());
     }
 
     // 定位功能
@@ -382,10 +390,6 @@
         showMessage('正在获取位置...', 'info');
         elements.coordinates.classList.remove('show');
         elements.mapContainer.classList.remove('show');
-
-        const timeoutId = setTimeout(() => {
-            showMessage('定位时间较长，请确保已开启GPS', 'warning');
-        }, 8000);
 
         try {
             const position = await new Promise((resolve, reject) => {
@@ -396,7 +400,6 @@
                 });
             });
 
-            clearTimeout(timeoutId);
             const lat = position.coords.latitude.toFixed(6);
             const lng = position.coords.longitude.toFixed(6);
             
@@ -406,7 +409,6 @@
             state.currentPosition = { lat: parseFloat(lat), lng: parseFloat(lng) };
             showMessage('位置获取成功', 'success');
         } catch (error) {
-            clearTimeout(timeoutId);
             handleLocationError(error);
         } finally {
             setButtonLoading(elements.locationButton, false);
@@ -451,85 +453,102 @@
         elements.mapContainer.classList.add('show');
     }
 
-    // 标注功能
-    async function startScan() {
-        if (state.scanActive) return;
-        
+    // 扫码功能
+    async function toggleScan() {
+        if (state.scanActive) {
+            stopScanning();
+        } else {
+            await startScanning();
+        }
+    }
+
+    async function startScanning() {
         setButtonLoading(elements.markButton, true);
-        showMessage('正在准备摄像头...', 'info');
+        showMessage('正在启动摄像头...', 'info');
 
         try {
-            await initCamera();
-            elements.cameraContainer.style.display = 'block';
-            await playVideoStream();
-            startQRScanner();
-        } catch (error) {
-            handleCameraError(error);
-        }
-    }
-
-    async function initCamera() {
-        // 先释放之前的视频流
-        if (state.videoStream) {
-            state.videoStream.getTracks().forEach(track => track.stop());
-        }
-
-        state.videoStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: "environment",
-                width: { min: 640, ideal: 1280 },
-                height: { min: 480, ideal: 720 },
-                frameRate: { ideal: 30 }
+            // 释放之前的视频流
+            if (state.videoStream) {
+                state.videoStream.getTracks().forEach(track => track.stop());
             }
-        });
-        elements.video.srcObject = state.videoStream;
-        state.cameraAllowed = true;
-    }
 
-    async function playVideoStream() {
-        try {
-            // 等待视频元数据加载
+            // 获取摄像头权限
+            state.videoStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+
+            elements.video.srcObject = state.videoStream;
+            elements.cameraContainer.style.display = 'block';
+            
+            // 等待视频准备就绪
             await new Promise((resolve) => {
                 elements.video.onloadedmetadata = resolve;
             });
-            
-            // 尝试自动播放
-            await elements.video.play();
-            elements.cameraOverlay.classList.add('hidden');
+
+            // 尝试播放视频
+            try {
+                await elements.video.play();
+                elements.cameraOverlay.classList.add('hidden');
+            } catch (error) {
+                elements.cameraOverlay.classList.remove('hidden');
+                throw error;
+            }
+
+            // 开始扫码
+            startQRScanner();
+            state.scanActive = true;
+            elements.markButton.querySelector('.button-text').textContent = '停止扫描';
+            showMessage('请扫描二维码', 'info');
         } catch (error) {
-            // 自动播放失败时显示继续按钮
-            elements.cameraOverlay.classList.remove('hidden');
-            throw error;
+            handleCameraError(error);
+        } finally {
+            setButtonLoading(elements.markButton, false);
         }
     }
 
     function resumeVideoPlayback() {
         elements.video.play()
-            .then(() => elements.cameraOverlay.classList.add('hidden'))
+            .then(() => {
+                elements.cameraOverlay.classList.add('hidden');
+                startQRScanner();
+            })
             .catch(handleVideoError);
     }
 
-    function handleVideoError(error) {
-        showMessage(`视频播放失败: ${error.message}`, 'error');
-        console.error('视频错误详情:', error);
-    }
-
     function startQRScanner() {
-        state.scanActive = true;
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        let animationFrame;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        let lastScanTime = 0;
 
-        const tick = () => {
-            if (!elements.video.videoWidth || !elements.video.videoHeight) {
-                animationFrame = requestAnimationFrame(tick);
+        const scanFrame = () => {
+            if (!state.scanActive) return;
+
+            // 限流：每300ms扫描一次
+            const now = Date.now();
+            if (now - lastScanTime < 300) {
+                requestAnimationFrame(scanFrame);
                 return;
             }
-            
+            lastScanTime = now;
+
+            // 确保视频已准备好
+            if (elements.video.readyState < elements.video.HAVE_ENOUGH_DATA) {
+                requestAnimationFrame(scanFrame);
+                return;
+            }
+
+            // 设置画布尺寸
             canvas.width = elements.video.videoWidth;
             canvas.height = elements.video.videoHeight;
-            ctx.drawImage(elements.video, 0, 0);
-            
+
+            // 绘制视频帧
+            ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
+
+            // 扫码识别
             try {
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const code = jsQR(imageData.data, imageData.width, imageData.height);
@@ -538,88 +557,51 @@
                     handleQRCodeDetected(code.data);
                     return;
                 }
-            } catch(e) {
-                console.error('QR解析错误:', e);
+            } catch (e) {
+                console.error('扫码错误:', e);
             }
-            animationFrame = requestAnimationFrame(tick);
+
+            requestAnimationFrame(scanFrame);
         };
-        
-        tick();
+
+        scanFrame();
     }
 
-    async function handleQRCodeDetected(addressCode) {
-        try {
-            showMessage('检测到地址码: ' + addressCode, 'success');
-            await updateLocationData(addressCode);
-        } catch (error) {
-            showMessage('数据更新失败: ' + error.message, 'error');
-        } finally {
-            stopScanning();
-        }
+    async function handleQRCodeDetected(code) {
+        showMessage(`识别成功: ${code}`, 'success');
+        stopScanning();
+        
+        // 这里添加处理二维码数据的逻辑
+        // 例如：elements.addressCode.textContent = code;
     }
 
     function stopScanning() {
         if (state.videoStream) {
             state.videoStream.getTracks().forEach(track => track.stop());
+            state.videoStream = null;
         }
+        
         elements.cameraContainer.style.display = 'none';
         state.scanActive = false;
+        elements.markButton.querySelector('.button-text').textContent = '标注位置';
         setButtonLoading(elements.markButton, false);
     }
 
-    // 数据提交功能
-    async function updateLocationData(addressCode) {
-        if (!state.currentPosition) {
-            throw new Error('请先获取当前位置');
+    function handleCameraError(error) {
+        let message = '摄像头访问失败';
+        if (error.name === 'NotAllowedError') {
+            message = '请允许摄像头权限';
+        } else if (error.name === 'NotFoundError') {
+            message = '未找到摄像头设备';
         }
+        
+        showMessage(`${message} (${error.name})`, 'error');
+        stopScanning();
+    }
 
-        showMessage('正在提交数据...', 'info');
-        setButtonLoading(elements.markButton, true);
-
-        try {
-            const dataUrl = `https://api.github.com/repos/${config.REPO}/contents/data/locations.json`;
-            const res = await fetch(dataUrl);
-            const { sha, content } = await res.json();
-            const currentData = JSON.parse(atob(content));
-
-            // 更新数据逻辑
-            if (currentData[addressCode]) {
-                currentData[addressCode].count++;
-                currentData[addressCode].lat = (currentData[addressCode].lat + state.currentPosition.lat)/2;
-                currentData[addressCode].lng = (currentData[addressCode].lng + state.currentPosition.lng)/2;
-            } else {
-                currentData[addressCode] = { 
-                    lat: state.currentPosition.lat, 
-                    lng: state.currentPosition.lng, 
-                    count: 1 
-                };
-            }
-
-            // 提交更新
-            const newContent = btoa(JSON.stringify(currentData));
-            await fetch(dataUrl, {
-                method: 'PUT',
-                headers: { 
-                    Authorization: `token ${config.TOKEN}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: `更新标注: ${addressCode}`,
-                    content: newContent,
-                    sha
-                })
-            });
-
-            // 更新UI
-            elements.addressCode.textContent = addressCode;
-            elements.markCount.textContent = currentData[addressCode].count;
-            showMessage('标注成功!', 'success');
-        } catch (error) {
-            console.error('数据提交错误:', error);
-            throw error;
-        } finally {
-            setButtonLoading(elements.markButton, false);
-        }
+    function handleVideoError(error) {
+        showMessage(`视频错误: ${error.message}`, 'error');
+        console.error('视频错误详情:', error);
     }
 
     // 辅助功能
@@ -633,18 +615,14 @@
         }
         
         navigator.clipboard.writeText(`${lng},${lat}`)
-            .then(() => {
-                showMessage('坐标已复制', 'success');
-                elements.copyButton.classList.add('copied');
-                setTimeout(() => elements.copyButton.classList.remove('copied'), 1000);
-            })
+            .then(() => showMessage('坐标已复制', 'success'))
             .catch(() => showMessage('复制失败', 'error'));
     }
 
     function showMessage(text, type) {
         elements.message.textContent = text;
         elements.message.className = `message ${type}-message`;
-        void elements.message.offsetHeight; // 触发重绘
+        void elements.message.offsetHeight;
         elements.message.classList.add('visible');
 
         if (type === 'success' || type === 'info') {
@@ -665,25 +643,17 @@
         }
     }
 
-    function handleCameraError(error) {
-        let message = '摄像头访问失败';
-        if (error.name === 'NotAllowedError') {
-            message = '请允许摄像头权限后刷新页面';
-        } else if (error.name === 'NotFoundError') {
-            message = '未找到可用摄像头设备';
-        } else if (error.name === 'NotReadableError') {
-            message = '摄像头被其他应用占用';
-        }
-        
-        showMessage(`${message} (${error.name})`, 'error');
-        setButtonLoading(elements.markButton, false);
-        console.error('摄像头错误详情:', error);
-    }
-
     // 初始化
     document.addEventListener('DOMContentLoaded', () => {
         initEventListeners();
-        checkDeviceCompatibility();
+        
+        // 检查设备兼容性
+        if (!navigator.mediaDevices?.getUserMedia) {
+            showMessage('当前浏览器不支持摄像头功能', 'error');
+        }
+        if (!navigator.geolocation) {
+            showMessage('当前浏览器不支持地理定位', 'error');
+        }
     });
     </script>
 </body>
