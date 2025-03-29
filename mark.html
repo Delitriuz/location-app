@@ -7,7 +7,6 @@
     <script src="https://webapi.amap.com/maps?v=2.0&key=5093d18edf40dafdd4070e638e322309"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* 完整UI样式 */
         :root {
             --system-blue: #007AFF;
             --system-gray-6: #F2F2F7;
@@ -228,7 +227,14 @@
             height: 300px;
             object-fit: cover;
             display: block;
-            /* 移除镜像翻转 */
+        }
+
+        #previewImage {
+            width: 100%;
+            height: 300px;
+            object-fit: contain;
+            display: none;
+            background: black;
         }
 
         .camera-overlay {
@@ -266,18 +272,58 @@
             pointer-events: none;
         }
 
-        .scan-line {
+        /* 拍照按钮样式 */
+        .capture-button {
             position: absolute;
-            width: 100%;
-            height: 2px;
-            background: var(--system-green);
-            animation: scan 2s infinite linear;
-            z-index: 6;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 50%;
+            border: 4px solid var(--system-gray-5);
+            z-index: 20;
+            cursor: pointer;
+            display: none;
         }
 
-        @keyframes scan {
-            0% { top: 0 }
-            100% { top: 100% }
+        .capture-button:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+
+        .capture-inner {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: calc(100% - 8px);
+            height: calc(100% - 8px);
+            background: var(--system-red);
+            border-radius: 50%;
+        }
+
+        /* 操作按钮组 */
+        .action-buttons {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            z-index: 20;
+            display: none;
+        }
+
+        .action-button-sm {
+            width: 80px;
+            padding: 10px;
+            background: rgba(255,255,255,0.8);
+            color: var(--label-primary);
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -297,7 +343,7 @@
                 <span class="button-text">获取我的位置</span>
             </button>
             <button id="markButton" class="action-button">
-                <span class="button-text">标注位置</span>
+                <span class="button-text">拍照识别二维码</span>
             </button>
         </div>
 
@@ -328,14 +374,19 @@
         <!-- 改进的摄像头界面 -->
         <div id="cameraContainer" class="card">
             <div class="scan-frame"></div>
-            <div class="scan-line"></div>
             <video id="video" playsinline></video>
+            <img id="previewImage" alt="拍摄的二维码图片">
             <div id="cameraOverlay" class="camera-overlay">
-                <p>请将二维码放入扫描框内</p>
-                <button id="resumeButton" class="action-button" style="margin-top: 16px; width: auto;">
-                    点击继续
-                </button>
+                <p>请对准二维码后拍照</p>
             </div>
+            <div id="captureButton" class="capture-button">
+                <div class="capture-inner"></div>
+            </div>
+            <div class="action-buttons" id="actionButtons">
+                <button id="retryButton" class="action-button-sm">重拍</button>
+                <button id="confirmButton" class="action-button-sm">确认</button>
+            </div>
+            <canvas id="previewCanvas" style="display:none;"></canvas>
         </div>
 
         <div id="message" class="message"></div>
@@ -351,7 +402,7 @@
         currentPosition: null,
         videoStream: null,
         scanActive: false,
-        scanInterval: null,
+        currentQRCode: null,
         canvas: document.createElement('canvas'),
         ctx: null
     };
@@ -361,7 +412,6 @@
         locationButton: document.getElementById('locationButton'),
         markButton: document.getElementById('markButton'),
         copyButton: document.getElementById('copyButton'),
-        resumeButton: document.getElementById('resumeButton'),
         video: document.getElementById('video'),
         cameraContainer: document.getElementById('cameraContainer'),
         cameraOverlay: document.getElementById('cameraOverlay'),
@@ -371,7 +421,13 @@
         latitude: document.getElementById('latitude'),
         longitude: document.getElementById('longitude'),
         addressCode: document.getElementById('addressCode'),
-        markCount: document.getElementById('markCount')
+        markCount: document.getElementById('markCount'),
+        captureButton: document.getElementById('captureButton'),
+        previewCanvas: document.getElementById('previewCanvas'),
+        previewImage: document.getElementById('previewImage'),
+        actionButtons: document.getElementById('actionButtons'),
+        retryButton: document.getElementById('retryButton'),
+        confirmButton: document.getElementById('confirmButton')
     };
 
     // 初始化Canvas上下文
@@ -382,7 +438,9 @@
         elements.locationButton.addEventListener('click', getLocation);
         elements.markButton.addEventListener('click', toggleScan);
         elements.copyButton.addEventListener('click', copyCoordinates);
-        elements.resumeButton.addEventListener('click', resumeVideoPlayback);
+        elements.captureButton.addEventListener('click', captureAndDecode);
+        elements.retryButton.addEventListener('click', retryCapture);
+        elements.confirmButton.addEventListener('click', confirmQRCode);
         
         // 防止视频全屏
         elements.video.addEventListener('click', e => e.preventDefault());
@@ -458,16 +516,16 @@
         elements.mapContainer.classList.add('show');
     }
 
-    // 扫码功能
+    // 扫码功能（拍照模式）
     async function toggleScan() {
         if (state.scanActive) {
-            stopScanning();
+            stopCamera();
         } else {
-            await startScanning();
+            await startCamera();
         }
     }
 
-    async function startScanning() {
+    async function startCamera() {
         setButtonLoading(elements.markButton, true);
         showMessage('正在启动摄像头...', 'info');
 
@@ -488,6 +546,8 @@
 
             elements.video.srcObject = state.videoStream;
             elements.cameraContainer.style.display = 'block';
+            elements.previewImage.style.display = 'none';
+            elements.video.style.display = 'block';
             
             // 等待视频准备就绪
             await new Promise((resolve) => {
@@ -503,11 +563,12 @@
                 throw error;
             }
 
-            // 开始扫码
-            startQRScanner();
+            // 显示拍照按钮
+            elements.captureButton.style.display = 'block';
+            elements.actionButtons.style.display = 'none';
             state.scanActive = true;
-            elements.markButton.querySelector('.button-text').textContent = '停止扫描';
-            showMessage('请扫描二维码', 'info');
+            elements.markButton.querySelector('.button-text').textContent = '关闭相机';
+            showMessage('请对准二维码后拍照', 'info');
         } catch (error) {
             handleCameraError(error);
         } finally {
@@ -515,87 +576,125 @@
         }
     }
 
-    function resumeVideoPlayback() {
-        elements.video.play()
-            .then(() => {
-                elements.cameraOverlay.classList.add('hidden');
-                startQRScanner();
-            })
-            .catch(handleVideoError);
+    // 拍照并解码二维码
+    async function captureAndDecode() {
+        try {
+            // 拍照
+            const imageData = capturePhoto();
+            
+            // 显示预览
+            elements.previewImage.src = imageData;
+            elements.previewImage.style.display = 'block';
+            elements.video.style.display = 'none';
+            elements.captureButton.style.display = 'none';
+            
+            // 识别二维码
+            const code = await decodeQRFromImage(imageData);
+            
+            if (code) {
+                state.currentQRCode = code;
+                showMessage('二维码识别成功', 'success');
+                elements.actionButtons.style.display = 'flex';
+            } else {
+                showMessage('未识别到二维码，请重试', 'error');
+                retryCapture();
+            }
+        } catch (error) {
+            console.error('二维码识别错误:', error);
+            showMessage('识别失败: ' + error.message, 'error');
+            retryCapture();
+        }
     }
 
-    function startQRScanner() {
-        let lastScanTime = 0;
-
-        const scanFrame = () => {
-            if (!state.scanActive) return;
-
-            // 限流：每300ms扫描一次
-            const now = Date.now();
-            if (now - lastScanTime < 300) {
-                requestAnimationFrame(scanFrame);
-                return;
-            }
-            lastScanTime = now;
-
-            // 确保视频已准备好
-            if (elements.video.readyState < elements.video.HAVE_ENOUGH_DATA) {
-                requestAnimationFrame(scanFrame);
-                return;
-            }
-
-            // 设置画布尺寸
-            state.canvas.width = elements.video.videoWidth;
-            state.canvas.height = elements.video.videoHeight;
-
-            // 绘制视频帧（不再镜像翻转）
-            state.ctx.drawImage(elements.video, 0, 0, state.canvas.width, state.canvas.height);
-
-            // 扫码识别
-            try {
-                const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
-                const code = jsQR(
-                    imageData.data, 
-                    imageData.width, 
-                    imageData.height,
-                    {
-                        inversionAttempts: 'dontInvert', // 重要：不尝试反转图像
-                        canOverwriteImage: false
-                    }
-                );
-                
-                if (code) {
-                    handleQRCodeDetected(code.data);
-                    return;
-                }
-            } catch (e) {
-                console.error('扫码错误:', e);
-            }
-
-            requestAnimationFrame(scanFrame);
-        };
-
-        scanFrame();
-    }
-
-    async function handleQRCodeDetected(code) {
-        showMessage(`识别成功: ${code}`, 'success');
-        stopScanning();
+    function capturePhoto() {
+        // 设置Canvas尺寸与视频相同
+        elements.previewCanvas.width = elements.video.videoWidth;
+        elements.previewCanvas.height = elements.video.videoHeight;
         
+        // 绘制当前视频帧到Canvas
+        const ctx = elements.previewCanvas.getContext('2d');
+        ctx.drawImage(elements.video, 0, 0, elements.previewCanvas.width, elements.previewCanvas.height);
+        
+        // 返回Base64图像数据
+        return elements.previewCanvas.toDataURL('image/jpeg', 0.8);
+    }
+
+    async function decodeQRFromImage(imageData) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                // 设置Canvas尺寸
+                state.canvas.width = img.width;
+                state.canvas.height = img.height;
+                
+                // 绘制图像
+                state.ctx.drawImage(img, 0, 0);
+                
+                // 识别二维码
+                try {
+                    const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
+                    const code = jsQR(
+                        imageData.data, 
+                        imageData.width, 
+                        imageData.height,
+                        {
+                            inversionAttempts: 'attemptBoth', // 尝试两种方向
+                            canOverwriteImage: false
+                        }
+                    );
+                    resolve(code ? code.data : null);
+                } catch (e) {
+                    console.error('解码错误:', e);
+                    resolve(null);
+                }
+            };
+            img.src = imageData;
+        });
+    }
+
+    // 重新拍照
+    function retryCapture() {
+        elements.previewImage.style.display = 'none';
+        elements.video.style.display = 'block';
+        elements.captureButton.style.display = 'block';
+        elements.actionButtons.style.display = 'none';
+        showMessage('请重新拍照', 'info');
+    }
+
+    // 确认使用识别的二维码
+    function confirmQRCode() {
+        if (state.currentQRCode) {
+            handleQRCodeDetected(state.currentQRCode);
+        }
+    }
+
+    function handleQRCodeDetected(code) {
         // 更新UI显示识别的二维码内容
         elements.addressCode.textContent = code;
         elements.coordinates.classList.add('show');
+        showMessage(`地址码已更新: ${code}`, 'success');
+        
+        // 关闭相机界面
+        stopCamera();
+        
+        // 这里可以添加提交数据到服务器的逻辑
+        // updateLocationData(code);
     }
 
-    function stopScanning() {
+    function stopCamera() {
         if (state.videoStream) {
             state.videoStream.getTracks().forEach(track => track.stop());
             state.videoStream = null;
         }
         
         elements.cameraContainer.style.display = 'none';
+        elements.video.style.display = 'block';
+        elements.previewImage.style.display = 'none';
+        elements.captureButton.style.display = 'none';
+        elements.actionButtons.style.display = 'none';
         state.scanActive = false;
-        elements.markButton.querySelector('.button-text').textContent = '标注位置';
+        state.currentQRCode = null;
+        elements.markButton.querySelector('.button-text').textContent = '拍照识别二维码';
         setButtonLoading(elements.markButton, false);
     }
 
@@ -608,12 +707,7 @@
         }
         
         showMessage(`${message} (${error.name})`, 'error');
-        stopScanning();
-    }
-
-    function handleVideoError(error) {
-        showMessage(`视频错误: ${error.message}`, 'error');
-        console.error('视频错误详情:', error);
+        stopCamera();
     }
 
     // 辅助功能
