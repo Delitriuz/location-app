@@ -4,10 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>位置标注</title>
-    <script src="https://webapi.amap.com/maps?v=2.0&key=5093d18edf40dafdd4070e638e322309"></script>
+    <script>
+    // 高德地图动态加载与重试机制
+    function loadAMap() {
+        if(!window.AMap) {
+            const script = document.createElement('script');
+            script.src = 'https://webapi.amap.com/maps?v=2.0&key=5093d18edf40dafdd4070e638e322309';
+            script.onerror = () => setTimeout(loadAMap, 3000);
+            document.head.appendChild(script);
+        }
+    }
+    loadAMap();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* 完全保留原始index.html所有样式 */
+        /* 完整优化样式 */
         @font-face {
             font-family: 'SF Pro';
             src: local('SF Pro Display'), local('San Francisco Display');
@@ -98,6 +109,11 @@
             overflow: hidden;
         }
 
+        .action-button:disabled {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
         .action-button:active {
             transform: scale(0.98);
             opacity: 0.9;
@@ -126,11 +142,6 @@
         @keyframes loadingShimmer {
             0% { transform: translateX(-100%) }
             100% { transform: translateX(100%) }
-        }
-
-        @keyframes buttonBounce {
-            0%, 100% { transform: scale(1) }
-            50% { transform: scale(0.96) }
         }
 
         .coordinates {
@@ -213,11 +224,12 @@
             background: rgba(52, 199, 89, 0.1);
         }
 
-        /* 新增标注功能样式 */
         #cameraContainer {
-            margin-top: 20px;
+            margin-top: 16px;
             border-radius: 14px;
             overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border: 0.5px solid rgba(0, 0, 0, 0.08);
             display: none;
         }
 
@@ -225,6 +237,7 @@
             width: 100%;
             height: 300px;
             object-fit: cover;
+            transform: scaleX(-1);
         }
     </style>
 </head>
@@ -239,15 +252,14 @@
             <h1 class="title">位置标注</h1>
         </div>
 
-        <!-- 原有功能按钮 -->
-        <button id="locationButton" class="action-button" onclick="getLocation()">
-            获取我的位置
-        </button>
-
-        <!-- 新增标注按钮 -->
-        <button id="markButton" class="action-button" style="margin-top:12px;" onclick="startScan()">
-            标注位置
-        </button>
+        <div style="display: grid; gap: 12px;">
+            <button id="locationButton" class="action-button" onclick="getLocation()">
+                获取我的位置
+            </button>
+            <button id="markButton" class="action-button" onclick="startScan()">
+                标注位置
+            </button>
+        </div>
 
         <div id="coordinates" class="coordinates">
             <div class="coordinate-item">
@@ -280,45 +292,52 @@
         <div id="message" class="message"></div>
     </div>
 
-    <div id="mapContainer" class="card"></div>
+    <div id="mapContainer" class="card" style="opacity: 0; transform: translateY(10px);"></div>
 
     <script>
-    // 原始定位功能保持不变
+    // 全局变量
     let map = null;
     let marker = null;
     let currentPosition = null;
-
-    // 新增标注功能变量
     const REPO = 'Delitriuz/location-app';
     const TOKEN = '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';
     let videoStream = null;
+    let scanActive = false;
 
-    // 原始定位功能
+    // 设备兼容性检测
+    window.addEventListener('load', () => {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            showMessage('当前浏览器不支持摄像头功能', 'error');
+        }
+        if (!navigator.geolocation) {
+            showMessage('当前浏览器不支持地理定位', 'error');
+        }
+    });
+
+    // 定位功能（增强版）
     function getLocation() {
         const button = document.getElementById('locationButton');
-        const coordinates = document.getElementById('coordinates');
         const message = document.getElementById('message');
         
+        button.disabled = true;
         message.classList.remove('visible');
-        coordinates.classList.remove('show');
-        button.classList.add('loading');
+        document.getElementById('coordinates').classList.remove('show');
         document.getElementById('mapContainer').classList.remove('show');
+        button.classList.add('loading');
 
-        if (!navigator.geolocation) {
-            showMessage("浏览器不支持地理定位", 'error');
-            return;
-        }
+        const timeoutId = setTimeout(() => {
+            showMessage('定位时间过长，请检查GPS信号', 'warning');
+        }, 8000);
 
         navigator.geolocation.getCurrentPosition(
             position => {
+                clearTimeout(timeoutId);
                 const lat = position.coords.latitude.toFixed(6);
                 const lng = position.coords.longitude.toFixed(6);
-                const accuracy = position.coords.accuracy.toFixed(1);
                 
                 document.getElementById('latitude').textContent = lat;
                 document.getElementById('longitude').textContent = lng;
-                document.getElementById('accuracy').textContent = `±${accuracy} 米`;
-                coordinates.classList.add('show');
+                document.getElementById('coordinates').classList.add('show');
                 
                 if (typeof AMap !== 'undefined') {
                     initMap(lng, lat);
@@ -326,15 +345,18 @@
                 
                 currentPosition = { lat: parseFloat(lat), lng: parseFloat(lng) };
                 button.classList.remove('loading');
+                button.disabled = false;
             },
             error => {
+                clearTimeout(timeoutId);
                 const errors = {
-                    1: '用户拒绝定位请求',
+                    1: '请允许位置权限后刷新页面',
                     2: '无法获取位置信息',
                     3: '定位请求超时'
                 };
                 showMessage(errors[error.code] || '定位失败', 'error');
                 button.classList.remove('loading');
+                button.disabled = false;
             },
             { 
                 enableHighAccuracy: true,
@@ -344,6 +366,7 @@
         );
     }
 
+    // 地图初始化
     function initMap(lng, lat) {
         const mapContainer = document.getElementById('mapContainer');
         
@@ -368,37 +391,60 @@
         mapContainer.classList.add('show');
     }
 
-    // 新增标注功能
+    // 标注功能（增强版）
     async function startScan() {
         const button = document.getElementById('markButton');
-        const video = document.getElementById('video');
-        
+        button.disabled = true;
         button.classList.add('loading');
         showMessage('正在启动摄像头...', 'info');
 
         try {
-            videoStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } 
+            videoStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { exact: "environment" },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
             });
+            
+            const video = document.getElementById('video');
             video.srcObject = videoStream;
             document.getElementById('cameraContainer').style.display = 'block';
-            scanQRCode(video);
+            
+            video.onloadedmetadata = () => {
+                video.play().catch(err => {
+                    showMessage('摄像头启动失败: ' + err.message, 'error');
+                    button.disabled = false;
+                });
+                scanQRCode(video);
+            };
         } catch (err) {
-            showMessage('摄像头访问失败: ' + err.message, 'error');
+            showMessage(`摄像头访问被拒绝: ${err.message}`, 'error');
+            button.disabled = false;
             button.classList.remove('loading');
         }
     }
 
+    // 二维码扫描（增强版）
     function scanQRCode(video) {
+        if(scanActive) return;
+        scanActive = true;
+        
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
+        let animationFrame;
 
-        function tick() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0);
-                
+        const tick = () => {
+            if (!video.videoWidth || !video.videoHeight) {
+                animationFrame = requestAnimationFrame(tick);
+                return;
+            }
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            try {
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const code = jsQR(imageData.data, imageData.width, imageData.height);
                 
@@ -406,14 +452,18 @@
                     handleAddressCode(code.data);
                     videoStream.getTracks().forEach(track => track.stop());
                     document.getElementById('cameraContainer').style.display = 'none';
-                    return;
+                    cancelAnimationFrame(animationFrame);
+                    scanActive = false;
                 }
+            } catch(e) {
+                console.error('QR解析错误:', e);
             }
-            requestAnimationFrame(tick);
-        }
-        requestAnimationFrame(tick);
+            animationFrame = requestAnimationFrame(tick);
+        };
+        tick();
     }
 
+    // 处理地址码（完整版）
     async function handleAddressCode(addressCode) {
         const button = document.getElementById('markButton');
         button.classList.add('loading');
@@ -465,10 +515,11 @@
             showMessage('操作失败: ' + error.message, 'error');
         } finally {
             button.classList.remove('loading');
+            button.disabled = false;
         }
     }
 
-    // 公共功能
+    // 复制坐标功能
     function copyCoordinates() {
         const btn = document.getElementById('copyButton');
         const lng = document.getElementById('longitude').textContent;
@@ -488,6 +539,7 @@
         });
     }
 
+    // 消息提示系统
     function showMessage(text, type) {
         const message = document.getElementById('message');
         message.textContent = text;
@@ -505,4 +557,3 @@
     </script>
 </body>
 </html>
-
