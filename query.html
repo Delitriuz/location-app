@@ -250,7 +250,7 @@
     // 数据获取函数
     async function fetchData() {
         try {
-            const response = await fetch('/data.json?_=' + Date.now());
+            const response = await fetch('/location-app/data.json?_=' + Date.now());
             if (!response.ok) throw new Error(`HTTP错误 ${response.status}`);
             return await response.json();
         } catch (error) {
