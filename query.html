@@ -6,7 +6,7 @@
     <title>位置查询</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
     <style>
-        /* 完全保持与 index.html 一致的样式 */
+        /* 完整保留原有样式 */
         @font-face {
             font-family: 'SF Pro';
             src: local('SF Pro Display'), local('San Francisco Display');
@@ -116,7 +116,6 @@
             animation: loadingShimmer 1.5s infinite;
         }
 
-        /* 新增输入框样式 */
         .input-field {
             width: 100%;
             padding: 12px;
@@ -133,7 +132,6 @@
             box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
         }
 
-        /* 结果展示区域 */
         #result {
             margin-top: 20px;
             opacity: 0;
@@ -164,7 +162,6 @@
             letter-spacing: -0.2px;
         }
 
-        /* 提示信息 */
         .message {
             font-size: 15px;
             text-align: center;
@@ -250,50 +247,50 @@
     </div>
 
     <script>
-    
-
+    // 数据获取函数
     async function fetchData() {
-    try {
-        // 修改为直接请求静态文件
-        const response = await fetch('/data.json?_=' + Date.now());
-        
-        if (!response.ok) throw new Error(`HTTP错误 ${response.status}`);
-        return await response.json();
-    } catch (error) {
-        showMessage('数据加载失败: ' + error.message, 'error');
-        return null;
-    }
-}
-async function searchAddress() {
-    const address = document.getElementById('addressInput').value.trim();
-    const resultDiv = document.getElementById('result');
-    
-    if (!address) {
-        showMessage('请输入有效的地址码', 'error');
-        return;  // ✅ 正确结束 if 块
-    }  // 添加这行闭合
-
-    showMessage('查询中...', 'info');
-    resultDiv.classList.remove('show');
-
-    try {
-        const data = await fetchData();
-        if (!data) return;
-
-        if (data[address]) {
-            document.getElementById('resultLat').textContent = data[address].lat.toFixed(6);
-            document.getElementById('resultLng').textContent = data[address].lng.toFixed(6);
-            document.getElementById('resultCount').textContent = data[address].count;
-            resultDiv.classList.add('show');
-            showMessage('查询成功', 'success');
-        } else {
-            showMessage('地址码不存在', 'error');
+        try {
+            const response = await fetch('/data.json?_=' + Date.now());
+            if (!response.ok) throw new Error(`HTTP错误 ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            showMessage('数据加载失败: ' + error.message, 'error');
+            return null;
         }
-    } catch (error) {
-        showMessage('查询失败: ' + error.message, 'error');
     }
-}  // 确保函数闭合
 
+    // 地址查询函数
+    async function searchAddress() {
+        const address = document.getElementById('addressInput').value.trim();
+        const resultDiv = document.getElementById('result');
+        
+        if (!address) {
+            showMessage('请输入有效的地址码', 'error');
+            return;
+        }
+
+        showMessage('查询中...', 'info');
+        resultDiv.classList.remove('show');
+
+        try {
+            const data = await fetchData();
+            if (!data) return;
+
+            if (data[address]) {
+                document.getElementById('resultLat').textContent = data[address].lat.toFixed(6);
+                document.getElementById('resultLng').textContent = data[address].lng.toFixed(6);
+                document.getElementById('resultCount').textContent = data[address].count;
+                resultDiv.classList.add('show');
+                showMessage('查询成功', 'success');
+            } else {
+                showMessage('地址码不存在', 'error');
+            }
+        } catch (error) {
+            showMessage('查询失败: ' + error.message, 'error');
+        }
+    }
+
+    // 导出Excel函数
     async function exportExcel() {
         const button = document.querySelector('.copy-button');
         button.classList.add('loading');
@@ -302,7 +299,6 @@ async function searchAddress() {
             const data = await fetchData();
             if (!data) return;
 
-            // 准备数据
             const worksheetData = [
                 ['地址码', '纬度', '经度', '标注次数'],
                 ...Object.entries(data).map(([code, info]) => [
@@ -313,21 +309,17 @@ async function searchAddress() {
                 ])
             ];
 
-            // 创建工作簿
             const workbook = XLSX.utils.book_new();
             const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
             
-            // 设置列宽
             worksheet['!cols'] = [
-                { wch: 25 },  // 地址码
-                { wch: 15 },  // 纬度
-                { wch: 15 },  // 经度
-                { wch: 12 }   // 标注次数
+                { wch: 25 },
+                { wch: 15 },
+                { wch: 15 },
+                { wch: 12 }
             ];
 
             XLSX.utils.book_append_sheet(workbook, worksheet, "位置数据");
-            
-            // 生成并下载文件
             XLSX.writeFile(workbook, '位置数据.xlsx');
             showMessage('导出成功', 'success');
         } catch (error) {
@@ -337,6 +329,7 @@ async function searchAddress() {
         }
     }
 
+    // 消息提示函数
     function showMessage(text, type) {
         const message = document.getElementById('message');
         message.textContent = text;
@@ -354,4 +347,3 @@ async function searchAddress() {
     </script>
 </body>
 </html>
-
