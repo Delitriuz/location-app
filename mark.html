@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>位置标注</title>
+    <title>位置标注系统</title>
+    <!-- 高德地图动态加载 -->
     <script>
-    // 高德地图动态加载与重试机制
     function loadAMap() {
         if(!window.AMap) {
             const script = document.createElement('script');
@@ -16,15 +16,10 @@
     }
     loadAMap();
     </script>
+    <!-- QR解码库 -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* 完整优化样式 */
-        @font-face {
-            font-family: 'SF Pro';
-            src: local('SF Pro Display'), local('San Francisco Display');
-            font-weight: 400;
-        }
-        
+        /* 优化后的完整样式 */
         :root {
             --system-blue: #007AFF;
             --system-gray-6: #F2F2F7;
@@ -46,7 +41,7 @@
         }
 
         body {
-            font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--background-secondary);
             color: var(--label-primary);
             display: flex;
@@ -107,16 +102,16 @@
             transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
             position: relative;
             overflow: hidden;
+            cursor: pointer;
         }
 
         .action-button:disabled {
             opacity: 0.7;
-            pointer-events: none;
+            background-color: var(--system-gray-3) !important;
         }
 
         .action-button:active {
             transform: scale(0.98);
-            opacity: 0.9;
         }
 
         .action-button.loading::after {
@@ -136,7 +131,6 @@
         .copy-button {
             background-color: var(--system-green) !important;
             margin-top: 12px;
-            transition: background-color 0.3s ease;
         }
 
         @keyframes loadingShimmer {
@@ -169,7 +163,7 @@
         }
 
         .coordinate-value {
-            font-family: 'SF Mono', monospace;
+            font-family: monospace;
             font-size: 15px;
             letter-spacing: -0.2px;
         }
@@ -224,6 +218,11 @@
             background: rgba(52, 199, 89, 0.1);
         }
 
+        .warning-message {
+            color: #FF9500;
+            background: rgba(255, 149, 0, 0.1);
+        }
+
         #cameraContainer {
             margin-top: 16px;
             border-radius: 14px;
@@ -231,13 +230,36 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
             border: 0.5px solid rgba(0, 0, 0, 0.08);
             display: none;
+            position: relative;
         }
 
         #video {
             width: 100%;
             height: 300px;
             object-fit: cover;
-            transform: scaleX(-1);
+            background: #000;
+            display: block;
+        }
+
+        .camera-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            font-size: 16px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .camera-overlay.hidden {
+            display: none;
         }
     </style>
 </head>
@@ -249,14 +271,14 @@
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
                 </svg>
             </div>
-            <h1 class="title">位置标注</h1>
+            <h1 class="title">位置标注系统</h1>
         </div>
 
         <div style="display: grid; gap: 12px;">
-            <button id="locationButton" class="action-button" onclick="getLocation()">
+            <button id="locationButton" class="action-button">
                 获取我的位置
             </button>
-            <button id="markButton" class="action-button" onclick="startScan()">
+            <button id="markButton" class="action-button">
                 标注位置
             </button>
         </div>
@@ -279,7 +301,7 @@
                 <span id="markCount" class="coordinate-value">--</span>
             </div>
             <div class="coordinate-item" style="border-bottom: none; margin-top: 12px;">
-                <button id="copyButton" class="action-button copy-button" onclick="copyCoordinates()">
+                <button id="copyButton" class="action-button copy-button">
                     复制坐标
                 </button>
             </div>
@@ -287,92 +309,130 @@
 
         <div id="cameraContainer" class="card">
             <video id="video"></video>
+            <div id="cameraOverlay" class="camera-overlay">
+                <p>摄像头已授权但视频未播放</p>
+                <button id="resumeButton" class="action-button" style="margin-top: 16px; width: auto;">
+                    点击继续
+                </button>
+            </div>
         </div>
 
         <div id="message" class="message"></div>
     </div>
 
-    <div id="mapContainer" class="card" style="opacity: 0; transform: translateY(10px);"></div>
+    <div id="mapContainer" class="card"></div>
 
     <script>
-    // 全局变量
-    let map = null;
-    let marker = null;
-    let currentPosition = null;
-    const REPO = 'Delitriuz/location-app';
-    const TOKEN = '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';
-    let videoStream = null;
-    let scanActive = false;
+    // 全局状态管理
+    const state = {
+        map: null,
+        marker: null,
+        currentPosition: null,
+        videoStream: null,
+        scanActive: false,
+        cameraAllowed: false
+    };
+
+    // GitHub配置
+    const config = {
+        REPO: 'Delitriuz/location-app',
+        TOKEN: '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'
+    };
+
+    // DOM元素缓存
+    const elements = {
+        locationButton: document.getElementById('locationButton'),
+        markButton: document.getElementById('markButton'),
+        copyButton: document.getElementById('copyButton'),
+        resumeButton: document.getElementById('resumeButton'),
+        video: document.getElementById('video'),
+        cameraContainer: document.getElementById('cameraContainer'),
+        cameraOverlay: document.getElementById('cameraOverlay'),
+        message: document.getElementById('message'),
+        mapContainer: document.getElementById('mapContainer'),
+        coordinates: document.getElementById('coordinates'),
+        latitude: document.getElementById('latitude'),
+        longitude: document.getElementById('longitude'),
+        addressCode: document.getElementById('addressCode'),
+        markCount: document.getElementById('markCount')
+    };
+
+    // 初始化事件监听
+    function initEventListeners() {
+        elements.locationButton.addEventListener('click', getLocation);
+        elements.markButton.addEventListener('click', startScan);
+        elements.copyButton.addEventListener('click', copyCoordinates);
+        elements.resumeButton.addEventListener('click', resumeVideoPlayback);
+        elements.video.addEventListener('click', () => elements.video.play().catch(handleVideoError));
+    }
 
     // 设备兼容性检测
-    window.addEventListener('load', () => {
+    function checkDeviceCompatibility() {
         if (!navigator.mediaDevices?.getUserMedia) {
             showMessage('当前浏览器不支持摄像头功能', 'error');
         }
         if (!navigator.geolocation) {
             showMessage('当前浏览器不支持地理定位', 'error');
         }
-    });
-
-    // 定位功能（增强版）
-    function getLocation() {
-        const button = document.getElementById('locationButton');
-        const message = document.getElementById('message');
-        
-        button.disabled = true;
-        message.classList.remove('visible');
-        document.getElementById('coordinates').classList.remove('show');
-        document.getElementById('mapContainer').classList.remove('show');
-        button.classList.add('loading');
-
-        const timeoutId = setTimeout(() => {
-            showMessage('定位时间过长，请检查GPS信号', 'warning');
-        }, 8000);
-
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                clearTimeout(timeoutId);
-                const lat = position.coords.latitude.toFixed(6);
-                const lng = position.coords.longitude.toFixed(6);
-                
-                document.getElementById('latitude').textContent = lat;
-                document.getElementById('longitude').textContent = lng;
-                document.getElementById('coordinates').classList.add('show');
-                
-                if (typeof AMap !== 'undefined') {
-                    initMap(lng, lat);
-                }
-                
-                currentPosition = { lat: parseFloat(lat), lng: parseFloat(lng) };
-                button.classList.remove('loading');
-                button.disabled = false;
-            },
-            error => {
-                clearTimeout(timeoutId);
-                const errors = {
-                    1: '请允许位置权限后刷新页面',
-                    2: '无法获取位置信息',
-                    3: '定位请求超时'
-                };
-                showMessage(errors[error.code] || '定位失败', 'error');
-                button.classList.remove('loading');
-                button.disabled = false;
-            },
-            { 
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            }
-        );
     }
 
-    // 地图初始化
+    // 定位功能
+    async function getLocation() {
+        setButtonLoading(elements.locationButton, true);
+        showMessage('正在获取位置...', 'info');
+        elements.coordinates.classList.remove('show');
+        elements.mapContainer.classList.remove('show');
+
+        const timeoutId = setTimeout(() => {
+            showMessage('定位时间较长，请确保已开启GPS', 'warning');
+        }, 8000);
+
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+
+            clearTimeout(timeoutId);
+            const lat = position.coords.latitude.toFixed(6);
+            const lng = position.coords.longitude.toFixed(6);
+            
+            updateCoordinates(lat, lng);
+            initMap(lng, lat);
+            
+            state.currentPosition = { lat: parseFloat(lat), lng: parseFloat(lng) };
+            showMessage('位置获取成功', 'success');
+        } catch (error) {
+            clearTimeout(timeoutId);
+            handleLocationError(error);
+        } finally {
+            setButtonLoading(elements.locationButton, false);
+        }
+    }
+
+    function updateCoordinates(lat, lng) {
+        elements.latitude.textContent = lat;
+        elements.longitude.textContent = lng;
+        elements.coordinates.classList.add('show');
+    }
+
+    function handleLocationError(error) {
+        const errors = {
+            1: '请允许位置权限后刷新页面',
+            2: '无法获取位置信息，请检查网络',
+            3: '定位请求超时，请重试'
+        };
+        showMessage(errors[error.code] || '定位失败: ' + error.message, 'error');
+    }
+
+    // 地图功能
     function initMap(lng, lat) {
-        const mapContainer = document.getElementById('mapContainer');
+        if (state.map) state.map.destroy();
         
-        if (map) map.destroy();
-        
-        map = new AMap.Map('mapContainer', {
+        state.map = new AMap.Map('mapContainer', {
             zoom: 16,
             center: [lng, lat],
             viewMode: '3D',
@@ -382,112 +442,155 @@
             scrollWheel: false
         });
         
-        marker = new AMap.Marker({
+        state.marker = new AMap.Marker({
             position: [lng, lat],
             icon: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
             offset: new AMap.Pixel(-13, -30)
         });
-        map.add(marker);
-        mapContainer.classList.add('show');
+        state.map.add(state.marker);
+        elements.mapContainer.classList.add('show');
     }
 
-    // 标注功能（增强版）
+    // 标注功能
     async function startScan() {
-        const button = document.getElementById('markButton');
-        button.disabled = true;
-        button.classList.add('loading');
-        showMessage('正在启动摄像头...', 'info');
+        if (state.scanActive) return;
+        
+        setButtonLoading(elements.markButton, true);
+        showMessage('正在准备摄像头...', 'info');
 
         try {
-            videoStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: { exact: "environment" },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                }
-            });
-            
-            const video = document.getElementById('video');
-            video.srcObject = videoStream;
-            document.getElementById('cameraContainer').style.display = 'block';
-            
-            video.onloadedmetadata = () => {
-                video.play().catch(err => {
-                    showMessage('摄像头启动失败: ' + err.message, 'error');
-                    button.disabled = false;
-                });
-                scanQRCode(video);
-            };
-        } catch (err) {
-            showMessage(`摄像头访问被拒绝: ${err.message}`, 'error');
-            button.disabled = false;
-            button.classList.remove('loading');
+            await initCamera();
+            elements.cameraContainer.style.display = 'block';
+            await playVideoStream();
+            startQRScanner();
+        } catch (error) {
+            handleCameraError(error);
         }
     }
 
-    // 二维码扫描（增强版）
-    function scanQRCode(video) {
-        if(scanActive) return;
-        scanActive = true;
-        
+    async function initCamera() {
+        // 先释放之前的视频流
+        if (state.videoStream) {
+            state.videoStream.getTracks().forEach(track => track.stop());
+        }
+
+        state.videoStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "environment",
+                width: { min: 640, ideal: 1280 },
+                height: { min: 480, ideal: 720 },
+                frameRate: { ideal: 30 }
+            }
+        });
+        elements.video.srcObject = state.videoStream;
+        state.cameraAllowed = true;
+    }
+
+    async function playVideoStream() {
+        try {
+            // 等待视频元数据加载
+            await new Promise((resolve) => {
+                elements.video.onloadedmetadata = resolve;
+            });
+            
+            // 尝试自动播放
+            await elements.video.play();
+            elements.cameraOverlay.classList.add('hidden');
+        } catch (error) {
+            // 自动播放失败时显示继续按钮
+            elements.cameraOverlay.classList.remove('hidden');
+            throw error;
+        }
+    }
+
+    function resumeVideoPlayback() {
+        elements.video.play()
+            .then(() => elements.cameraOverlay.classList.add('hidden'))
+            .catch(handleVideoError);
+    }
+
+    function handleVideoError(error) {
+        showMessage(`视频播放失败: ${error.message}`, 'error');
+        console.error('视频错误详情:', error);
+    }
+
+    function startQRScanner() {
+        state.scanActive = true;
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         let animationFrame;
 
         const tick = () => {
-            if (!video.videoWidth || !video.videoHeight) {
+            if (!elements.video.videoWidth || !elements.video.videoHeight) {
                 animationFrame = requestAnimationFrame(tick);
                 return;
             }
             
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
+            canvas.width = elements.video.videoWidth;
+            canvas.height = elements.video.videoHeight;
+            ctx.drawImage(elements.video, 0, 0);
             
             try {
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const code = jsQR(imageData.data, imageData.width, imageData.height);
                 
                 if (code) {
-                    handleAddressCode(code.data);
-                    videoStream.getTracks().forEach(track => track.stop());
-                    document.getElementById('cameraContainer').style.display = 'none';
-                    cancelAnimationFrame(animationFrame);
-                    scanActive = false;
+                    handleQRCodeDetected(code.data);
+                    return;
                 }
             } catch(e) {
                 console.error('QR解析错误:', e);
             }
             animationFrame = requestAnimationFrame(tick);
         };
+        
         tick();
     }
 
-    // 处理地址码（完整版）
-    async function handleAddressCode(addressCode) {
-        const button = document.getElementById('markButton');
-        button.classList.add('loading');
-        showMessage('正在更新数据...', 'info');
+    async function handleQRCodeDetected(addressCode) {
+        try {
+            showMessage('检测到地址码: ' + addressCode, 'success');
+            await updateLocationData(addressCode);
+        } catch (error) {
+            showMessage('数据更新失败: ' + error.message, 'error');
+        } finally {
+            stopScanning();
+        }
+    }
+
+    function stopScanning() {
+        if (state.videoStream) {
+            state.videoStream.getTracks().forEach(track => track.stop());
+        }
+        elements.cameraContainer.style.display = 'none';
+        state.scanActive = false;
+        setButtonLoading(elements.markButton, false);
+    }
+
+    // 数据提交功能
+    async function updateLocationData(addressCode) {
+        if (!state.currentPosition) {
+            throw new Error('请先获取当前位置');
+        }
+
+        showMessage('正在提交数据...', 'info');
+        setButtonLoading(elements.markButton, true);
 
         try {
-            if (!currentPosition) {
-                throw new Error('请先获取当前位置');
-            }
-
-            const dataUrl = `https://api.github.com/repos/${REPO}/contents/data/locations.json`;
+            const dataUrl = `https://api.github.com/repos/${config.REPO}/contents/data/locations.json`;
             const res = await fetch(dataUrl);
             const { sha, content } = await res.json();
             const currentData = JSON.parse(atob(content));
 
-            // 更新逻辑
+            // 更新数据逻辑
             if (currentData[addressCode]) {
                 currentData[addressCode].count++;
-                currentData[addressCode].lat = (currentData[addressCode].lat + currentPosition.lat)/2;
-                currentData[addressCode].lng = (currentData[addressCode].lng + currentPosition.lng)/2;
+                currentData[addressCode].lat = (currentData[addressCode].lat + state.currentPosition.lat)/2;
+                currentData[addressCode].lng = (currentData[addressCode].lng + state.currentPosition.lng)/2;
             } else {
                 currentData[addressCode] = { 
-                    lat: currentPosition.lat, 
-                    lng: currentPosition.lng, 
+                    lat: state.currentPosition.lat, 
+                    lng: state.currentPosition.lng, 
                     count: 1 
                 };
             }
@@ -497,7 +600,7 @@
             await fetch(dataUrl, {
                 method: 'PUT',
                 headers: { 
-                    Authorization: `token ${TOKEN}`,
+                    Authorization: `token ${config.TOKEN}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -508,52 +611,80 @@
             });
 
             // 更新UI
-            document.getElementById('addressCode').textContent = addressCode;
-            document.getElementById('markCount').textContent = currentData[addressCode].count;
+            elements.addressCode.textContent = addressCode;
+            elements.markCount.textContent = currentData[addressCode].count;
             showMessage('标注成功!', 'success');
         } catch (error) {
-            showMessage('操作失败: ' + error.message, 'error');
+            console.error('数据提交错误:', error);
+            throw error;
         } finally {
-            button.classList.remove('loading');
-            button.disabled = false;
+            setButtonLoading(elements.markButton, false);
         }
     }
 
-    // 复制坐标功能
+    // 辅助功能
     function copyCoordinates() {
-        const btn = document.getElementById('copyButton');
-        const lng = document.getElementById('longitude').textContent;
-        const lat = document.getElementById('latitude').textContent;
+        const lng = elements.longitude.textContent;
+        const lat = elements.latitude.textContent;
         
         if (lng === '--' || lat === '--') {
             showMessage('请先获取位置信息', 'error');
             return;
         }
         
-        navigator.clipboard.writeText(`${lng},${lat}`).then(() => {
-            btn.classList.add('copied');
-            setTimeout(() => btn.classList.remove('copied'), 400);
-            showMessage('坐标已复制', 'success');
-        }).catch(err => {
-            showMessage('复制失败', 'error');
-        });
+        navigator.clipboard.writeText(`${lng},${lat}`)
+            .then(() => {
+                showMessage('坐标已复制', 'success');
+                elements.copyButton.classList.add('copied');
+                setTimeout(() => elements.copyButton.classList.remove('copied'), 1000);
+            })
+            .catch(() => showMessage('复制失败', 'error'));
     }
 
-    // 消息提示系统
     function showMessage(text, type) {
-        const message = document.getElementById('message');
-        message.textContent = text;
-        message.className = `message ${type}-message`;
-        void message.offsetHeight;
-        message.classList.add('visible');
+        elements.message.textContent = text;
+        elements.message.className = `message ${type}-message`;
+        void elements.message.offsetHeight; // 触发重绘
+        elements.message.classList.add('visible');
 
-        if (type === 'success') {
+        if (type === 'success' || type === 'info') {
             setTimeout(() => {
-                message.classList.remove('visible');
-                setTimeout(() => message.textContent = '', 300);
+                elements.message.classList.remove('visible');
+                setTimeout(() => elements.message.textContent = '', 300);
             }, 1500);
         }
     }
+
+    function setButtonLoading(button, isLoading) {
+        if (isLoading) {
+            button.classList.add('loading');
+            button.disabled = true;
+        } else {
+            button.classList.remove('loading');
+            button.disabled = false;
+        }
+    }
+
+    function handleCameraError(error) {
+        let message = '摄像头访问失败';
+        if (error.name === 'NotAllowedError') {
+            message = '请允许摄像头权限后刷新页面';
+        } else if (error.name === 'NotFoundError') {
+            message = '未找到可用摄像头设备';
+        } else if (error.name === 'NotReadableError') {
+            message = '摄像头被其他应用占用';
+        }
+        
+        showMessage(`${message} (${error.name})`, 'error');
+        setButtonLoading(elements.markButton, false);
+        console.error('摄像头错误详情:', error);
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+        initEventListeners();
+        checkDeviceCompatibility();
+    });
     </script>
 </body>
 </html>
