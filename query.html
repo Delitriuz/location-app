@@ -255,12 +255,10 @@
     async function fetchData() {
     try {
         // 修改为直接请求静态文件
-        const response = await fetch('/data/locations.json?_=' + Date.now()); // <- 重要修改！
+        const response = await fetch('/data.json?_=' + Date.now());
         
         if (!response.ok) throw new Error(`HTTP错误 ${response.status}`);
-        
-        return await response.json(); // <- 删除base64解码逻辑
-        
+        return await response.json();
     } catch (error) {
         showMessage('数据加载失败: ' + error.message, 'error');
         return null;
