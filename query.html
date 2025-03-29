@@ -255,7 +255,7 @@
     async function fetchData() {
     try {
         // 修改为直接请求静态文件
-        const response = await fetch('/public/data.json?_=' + Date.now()); // <- 重要修改！
+        const response = await fetch('/data/locations.json?_=' + Date.now()); // <- 重要修改！
         
         if (!response.ok) throw new Error(`HTTP错误 ${response.status}`);
         
