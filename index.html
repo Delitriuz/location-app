@@ -1,1 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>位置定位</title>
+    <!-- 引入高德地图API -->
+    <script src="https://webapi.amap.com/maps?v=2.0&key=5093d18edf40dafdd4070e638e322309"></script>
+    <style>
+        /* Apple SF Pro字体（需用户已安装） */
+        @font-face {
+            font-family: 'SF Pro';
+            src: local('SF Pro Display'), local('San Francisco Display');
+            font-weight: 400;
+        }
+        
+        :root {
+            --system-blue: #007AFF;
+            --system-gray-6: #F2F2F7;
+            --system-gray-5: #E5E5EA;
+            --system-gray-3: #C7C7CC;
+            --system-red: #FF3B30;
+            --system-green: #34C759;
+            --label-primary: #000000;
+            --label-secondary: #3C3C4399;
+            --background-primary: #FFFFFF;
+            --background-secondary: #F2F2F7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--background-secondary);
+            color: var(--label-primary);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        /* 毛玻璃卡片 */
+        .card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+            border: 0.5px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .header-icon {
+            width: 28px;
+            height: 28px;
+            background-color: var(--system-blue);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+
+        .header-icon svg {
+            width: 16px;
+            height: 16px;
+            fill: white;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.4px;
+        }
+
+        /* iOS风格按钮 */
+        .action-button {
+            width: 100%;
+            padding: 16px;
+            background: var(--system-blue);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-button:active {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
+
+        .action-button.loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.3), 
+                transparent);
+            animation: loadingShimmer 1.5s infinite;
+        }
+
+        /* 复制按钮样式（修改为绿色） */
+        .copy-button {
+            background-color: var(--system-green) !important;
+            margin-top: 12px;
+            transition: background-color 0.3s ease;
+        }
+
+        .copy-button.copied {
+            animation: buttonBounce 0.4s ease;
+        }
+
+        @keyframes loadingShimmer {
+            0% { transform: translateX(-100%) }
+            100% { transform: translateX(100%) }
+        }
+
+        @keyframes buttonBounce {
+            0%, 100% { transform: scale(1) }
+            50% { transform: scale(0.96) }
+        }
+
+        /* 坐标显示 */
+        .coordinates {
+            margin-top: 20px;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.4, 1);
+        }
+
+        .coordinates.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .coordinate-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--system-gray-5);
+        }
+
+        .coordinate-label {
+            color: var(--label-secondary);
+            font-size: 15px;
+        }
+
+        .coordinate-value {
+            font-family: 'SF Mono', monospace;
+            font-size: 15px;
+            letter-spacing: -0.2px;
+        }
+
+        /* 地图容器 */
+        #mapContainer {
+            width: 100%;
+            height: 300px;
+            border-radius: 14px;
+            overflow: hidden;
+            margin-top: 16px;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.4, 1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border: 0.5px solid rgba(0, 0, 0, 0.08);
+        }
+
+        #mapContainer.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* 提示信息 */
+        .message {
+            font-size: 15px;
+            text-align: center;
+            padding: 12px;
+            border-radius: 12px;
+            display: block;
+            opacity: 0;
+            transform: translateY(-10px);
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
+            height: 0;
+            margin: 0;
+        }
+
+        .message.visible {
+            opacity: 1;
+            transform: translateY(0);
+            visibility: visible;
+            height: auto;
+            margin-top: 16px;
+        }
+
+        .error-message {
+            color: var(--system-red);
+            background: rgba(255, 59, 48, 0.1);
+        }
+
+        .success-message {
+            color: var(--system-green);
+            background: rgba(52, 199, 89, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
+                </svg>
+            </div>
+            <h1 class="title">位置定位</h1>
+        </div>
+
+        <button id="locationButton" class="action-button" onclick="getLocation()">
+            获取我的位置
+        </button>
+
+        <div id="coordinates" class="coordinates">
+            <div class="coordinate-item">
+                <span class="coordinate-label">纬度</span>
+                <span id="latitude" class="coordinate-value">--</span>
+            </div>
+            <div class="coordinate-item">
+                <span class="coordinate-label">经度</span>
+                <span id="longitude" class="coordinate-value">--</span>
+            </div>
+            <div class="coordinate-item" style="border-bottom: none;">
+                <span class="coordinate-label">精度</span>
+                <span id="accuracy" class="coordinate-value">-- 米</span>
+            </div>
+            <div class="coordinate-item" style="border-bottom: none; margin-top: 12px;">
+                <button id="copyButton" class="action-button copy-button" onclick="copyCoordinates()">
+                    复制坐标
+                </button>
+            </div>
+        </div>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <div id="mapContainer" class="card"></div>
+
+    <script>
+    let map = null;
+    let marker = null;
+
+    function getLocation() {
+        const button = document.getElementById('locationButton');
+        const coordinates = document.getElementById('coordinates');
+        const message = document.getElementById('message');
+        
+        // 重置状态
+        message.classList.remove('visible');
+        coordinates.classList.remove('show');
+        button.classList.add('loading');
+        document.getElementById('mapContainer').classList.remove('show');
+
+        if (!navigator.geolocation) {
+            showMessage("您的浏览器不支持地理定位", 'error');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                const lat = position.coords.latitude.toFixed(6);
+                const lng = position.coords.longitude.toFixed(6);
+                const accuracy = position.coords.accuracy.toFixed(1);
+                
+                // 更新坐标显示
+                document.getElementById('latitude').textContent = lat;
+                document.getElementById('longitude').textContent = lng;
+                document.getElementById('accuracy').textContent = `±${accuracy} 米`;
+                coordinates.classList.add('show');
+                
+                // 初始化地图
+                if (typeof AMap !== 'undefined') {
+                    initMap(lng, lat);
+                }
+                
+                button.classList.remove('loading');
+            },
+            error => {
+                const errors = {
+                    1: '您拒绝了定位请求',
+                    2: '无法获取位置信息',
+                    3: '定位请求超时'
+                };
+                showMessage(errors[error.code] || '定位服务不可用', 'error');
+                button.classList.remove('loading');
+            },
+            { 
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+
+    function initMap(lng, lat) {
+        const mapContainer = document.getElementById('mapContainer');
+        
+        if (map) {
+            map.destroy();
+        }
+        
+        map = new AMap.Map('mapContainer', {
+            zoom: 16,
+            center: [lng, lat],
+            viewMode: '3D',
+            resizeEnable: true,
+            zoomEnable: true,
+            touchZoom: true,
+            scrollWheel: false
+        });
+        
+        // 添加标记点
+        marker = new AMap.Marker({
+            position: [lng, lat],
+            icon: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+            offset: new AMap.Pixel(-13, -30)
+        });
+        map.add(marker);
+        
+        // 显示地图
+        mapContainer.classList.add('show');
+    }
+
+    function copyCoordinates() {
+        const btn = document.getElementById('copyButton');
+        const lng = document.getElementById('longitude').textContent;
+        const lat = document.getElementById('latitude').textContent;
+        
+        if (lng === '--' || lat === '--') {
+            showMessage('请先获取位置信息', 'error');
+            return;
+        }
+        
+        const coords = `${lng} ${lat}`;
+        navigator.clipboard.writeText(coords).then(() => {
+            // 按钮反馈动画
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 400);
+            
+            // 显示成功提示
+            showMessage('坐标已复制', 'success');
+        }).catch(err => {
+            showMessage('复制失败，请手动复制', 'error');
+        });
+    }
+
+    function showMessage(text, type) {
+        const message = document.getElementById('message');
+        message.textContent = text;
+        message.className = `message ${type}-message`;
+
+        // 显示动画
+        void message.offsetHeight; // 触发重绘
+        message.classList.add('visible');
+
+        // 自动隐藏（仅限成功提示）
+        if (type === 'success') {
+            setTimeout(() => {
+                message.classList.remove('visible');
+                setTimeout(() => {
+                    message.textContent = '';
+                }, 300); // 等待过渡结束
+            }, 1500);
+        }
+    }
+    </script>
+</body>
+</html>
 
