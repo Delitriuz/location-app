@@ -23,7 +23,7 @@ jobs:
         # 获取数据并保存为JSON
         curl -sH "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/Delitriuz/location-app/contents/data/locations.json | \
-          jq -r .content | base64 -d > public/data.json
+          jq -r .content | base64 -d > data.json
 
     - name: Commit changes
       run: |
