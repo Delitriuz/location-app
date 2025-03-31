@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>位置工具箱</title>
+    <style>
+        /* 复用原有设计系统 */
+        @font-face {
+            font-family: 'SF Pro';
+            src: local('SF Pro Display'), local('San Francisco Display');
+            font-weight: 400;
+        }
+        
+        :root {
+            --system-blue: #007AFF;
+            --system-gray-6: #F2F2F7;
+            --system-gray-5: #E5E5EA;
+            --system-gray-3: #C7C7CC;
+            --label-primary: #000000;
+            --label-secondary: #3C3C4399;
+            --background-primary: #FFFFFF;
+            --background-secondary: #F2F2F7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--background-secondary);
+            color: var(--label-primary);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        /* 导航卡片容器 */
+        .nav-container {
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* 功能卡片 */
+        .nav-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+            border: 0.5px solid rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .nav-card:active {
+            transform: scale(0.98);
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        /* 卡片内容布局 */
+        .card-content {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            background-color: var(--system-blue);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+        }
+
+        .card-icon svg {
+            width: 24px;
+            height: 24px;
+            fill: white;
+        }
+
+        .card-text {
+            flex: 1;
+        }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .card-description {
+            font-size: 13px;
+            color: var(--label-secondary);
+            line-height: 1.4;
+        }
+
+        /* 页头 */
+        .page-header {
+            text-align: center;
+            margin: 40px 0 32px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.6px;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            color: var(--label-secondary);
+            font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-container">
+        <div class="page-header">
+            <h1 class="page-title">位置工具箱</h1>
+            <p class="page-subtitle">高效处理地理空间数据</p>
+        </div>
+
+        <a href="mark.html" class="nav-card">
+            <div class="card-content">
+                <div class="card-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
+                    </svg>
+                </div>
+                <div class="card-text">
+                    <div class="card-title">坐标标注</div>
+                    <div class="card-description">在地图上标记关键位置点并导出坐标数据</div>
+                </div>
+            </div>
+        </a>
+
+        <a href="query.html" class="nav-card">
+            <div class="card-content">
+                <div class="card-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
+                    </svg>
+                </div>
+                <div class="card-text">
+                    <div class="card-title">地址查询</div>
+                    <div class="card-description">通过地址编码快速定位并获取精确坐标信息</div>
+                </div>
+            </div>
+        </a>
+    </div>
+</body>
+</html>
