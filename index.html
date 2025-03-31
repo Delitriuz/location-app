@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>精准位置定位</title>
-    <script src="https://api.map.baidu.com/api?v=2.0&type=webgl&ak=hMSicmPPBRv4C84aVDFnTnBedKZzYEZ3"></script>
+    <!-- 替换为百度地图API -->
+    <script src="https://api.map.baidu.com/api?v=3.0&ak=hMSicmPPBRv4C84aVDFnTnBedKZzYEZ3"></script>
     <style>
         /* 保持原有UI样式不变 */
         @font-face {
@@ -258,28 +259,66 @@
     <div id="mapContainer" class="card"></div>
 
     <script>
+    // 百度地图坐标系转换工具
+    const CoordTransform = {
+        // WGS-84 转 GCJ-02
+        wgs84ToGcj02: function(lng, lat) {
+            if (this.outOfChina(lat, lng)) return [lng, lat];
+            
+            const PI = 3.14159265358979324;
+            const ee = 0.00669342162296594323;
+            
+            let dLat = this.transformLat(lng - 105.0, lat - 35.0);
+            let dLng = this.transformLng(lng - 105.0, lat - 35.0);
+            const radLat = lat / 180.0 * PI;
+            let magic = Math.sin(radLat);
+            magic = 1 - ee * magic * magic;
+            const sqrtMagic = Math.sqrt(magic);
+            dLat = (dLat * 180.0) / ((6378245.0 * (1 - ee)) / (magic * sqrtMagic) * PI);
+            dLng = (dLng * 180.0) / (6378245.0 / sqrtMagic * Math.cos(radLat) * PI);
+            return [lng + dLng, lat + dLat];
+        },
+        
+        // GCJ-02 转 BD-09
+        gcj02ToBd09: function(lng, lat) {
+            const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * Math.PI * 3000.0 / 180.0);
+            const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * Math.PI * 3000.0 / 180.0);
+            return [z * Math.cos(theta) + 0.0065, z * Math.sin(theta) + 0.006];
+        },
+        
+        // WGS-84 直接转 BD-09
+        wgs84ToBd09: function(lng, lat) {
+            const gcj = this.wgs84ToGcj02(lng, lat);
+            return this.gcj02ToBd09(gcj[0], gcj[1]);
+        },
+        
+        outOfChina: function(lat, lng) {
+            return !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55);
+        },
+        
+        transformLat: function(x, y) {
+            const PI = 3.14159265358979324;
+            let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+            ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
+            ret += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0;
+            ret += (160.0 * Math.sin(y / 12.0 * PI) + 320 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0;
+            return ret;
+        },
+        
+        transformLng: function(x, y) {
+            const PI = 3.14159265358979324;
+            let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+            ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
+            ret += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0;
+            ret += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0;
+            return ret;
+        }
+    };
+
     let map = null;
     let marker = null;
-    const BAIDU_AK = 'hMSicmPPBRv4C84aVDFnTnBedKZzYEZ3';
 
-    // 百度坐标转换方法
-    async function convertToBd09(lng, lat) {
-        try {
-            const url = `https://api.map.baidu.com/geoconv/v2/?coords=${lng},${lat}&model=1&ak=${BAIDU_AK}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if(data.status === 0 && data.result.length > 0) {
-                return [data.result[0].x, data.result[0].y];
-            }
-            throw new Error('坐标转换失败');
-        } catch (error) {
-            showMessage('坐标转换服务不可用', 'error');
-            return [lng, lat]; // 失败时返回原始坐标
-        }
-    }
-
-    async function getLocation() {
+    function getLocation() {
         const button = document.getElementById('locationButton');
         const coordinates = document.getElementById('coordinates');
         const message = document.getElementById('message');
@@ -294,78 +333,70 @@
             return;
         }
 
-        try {
-            const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                });
-            });
-
-            const rawLat = position.coords.latitude;
-            const rawLng = position.coords.longitude;
-            
-            // 转换为百度坐标
-            const [bdLng, bdLat] = await convertToBd09(rawLng, rawLat);
-            
-            // 更新显示
-            document.getElementById('latitude').textContent = bdLat.toFixed(6);
-            document.getElementById('longitude').textContent = bdLng.toFixed(6);
-            document.getElementById('accuracy').textContent = `±${position.coords.accuracy.toFixed(1)} 米`;
-            coordinates.classList.add('show');
-            
-            // 初始化百度地图
-            initBaiduMap(bdLng, bdLat);
-            
-        } catch (error) {
-            const errors = {
-                1: '您拒绝了定位请求',
-                2: '无法获取位置信息',
-                3: '定位请求超时'
-            };
-            showMessage(errors[error.code] || '定位服务不可用', 'error');
-        } finally {
-            button.classList.remove('loading');
-        }
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                const rawLat = position.coords.latitude;
+                const rawLng = position.coords.longitude;
+                
+                // 转换为百度坐标系BD-09
+                const [bdLng, bdLat] = CoordTransform.wgs84ToBd09(rawLng, rawLat);
+                
+                // 显示转换后的坐标
+                document.getElementById('latitude').textContent = bdLat.toFixed(6);
+                document.getElementById('longitude').textContent = bdLng.toFixed(6);
+                document.getElementById('accuracy').textContent = `±${position.coords.accuracy.toFixed(1)} 米`;
+                coordinates.classList.add('show');
+                
+                // 初始化百度地图
+                initBaiduMap(bdLng, bdLat);
+                
+                button.classList.remove('loading');
+            },
+            error => {
+                const errors = {
+                    1: '您拒绝了定位请求',
+                    2: '无法获取位置信息',
+                    3: '定位请求超时'
+                };
+                showMessage(errors[error.code] || '定位服务不可用', 'error');
+                button.classList.remove('loading');
+            },
+            { 
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
     }
 
     function initBaiduMap(lng, lat) {
         const mapContainer = document.getElementById('mapContainer');
         
         if (map) {
-            map.destroy();
+            // 百度地图没有destroy方法，直接重新创建
+            mapContainer.innerHTML = '';
         }
         
-        // 初始化2D地图
-        map = new BMap.Map('mapContainer', {
-            minZoom: 3,
-            maxZoom: 19
-        });
-        
-        // 设置中心点和缩放
+        // 创建百度地图实例
+        map = new BMap.Map("mapContainer");
         const point = new BMap.Point(lng, lat);
         map.centerAndZoom(point, 16);
-        map.enableScrollWheelZoom(true);
         
-        // 添加圆形标记
-        const circle = new BMap.Circle(point, 20, {
-            strokeColor: "#007AFF",
-            fillColor: "#007AFF",
-            strokeWeight: 2,
-            strokeOpacity: 0.8,
-            fillOpacity: 0.3
-        });
-        map.addOverlay(circle);
-        
-        // 添加中心标记点
-        marker = new BMap.Marker(point, {
-            icon: new BMap.Icon('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSIjMDA3QUZGIj48cGF0aCBkPSJNMTIgMkM4LjEzIDIgNSA1LjEzIDUgOWMwIDUuMjUgNyAxMyA3IDEzczctNy43NSA3LTEzYzAtMy44Ny0zLjEzLTctNy03em0wIDkuNWEyLjUgMi41IDAgMDEwLTUgMi41IDIuNSAwIDAxMCA1eiIvPjwvc3ZnPg==', 
-            new BMap.Size(24, 24))
-        });
+        // 添加默认图钉标记
+        marker = new BMap.Marker(point);
         map.addOverlay(marker);
         
+        // 启用控件
+        map.addControl(new BMap.NavigationControl());
+        map.addControl(new BMap.ScaleControl());
+        
+        // 显示地图
         mapContainer.classList.add('show');
+        
+        // 添加地图类型控件
+        map.addControl(new BMap.MapTypeControl({
+            mapTypes: [BMAP_NORMAL_MAP, BMAP_HYBRID_MAP]
+        }));
     }
 
     function copyCoordinates() {
