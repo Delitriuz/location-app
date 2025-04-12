@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>精准位置定位</title>
-    <!-- 替换为百度地图API -->
-    <script src="https://api.map.baidu.com/api?v=3.0&ak=hMSicmPPBRv4C84aVDFnTnBedKZzYEZ3"></script>
+    <title>位置工具导航</title>
+    <!-- 注意：此页面不再需要高德地图API，除非您想在背景或其他地方展示地图 -->
     <style>
-        /* 保持原有UI样式不变 */
+        /* 完全保留之前的样式 */
         @font-face {
             font-family: 'SF Pro';
             src: local('SF Pro Display'), local('San Francisco Display');
@@ -42,8 +41,11 @@
             flex-direction: column;
             min-height: 100vh;
             padding: 16px;
+            /* 垂直居中内容 */
+            justify-content: center; 
         }
 
+        /* 毛玻璃卡片 */
         .card {
             background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(20px);
@@ -53,6 +55,10 @@
             margin-bottom: 16px;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
             border: 0.5px solid rgba(0, 0, 0, 0.08);
+            /* 限制最大宽度，使其在桌面端更好看 */
+            max-width: 400px; 
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .header {
@@ -72,6 +78,7 @@
             margin-right: 12px;
         }
 
+        /* 使用一个更通用的导航图标 */
         .header-icon svg {
             width: 16px;
             height: 16px;
@@ -84,11 +91,15 @@
             letter-spacing: -0.4px;
         }
 
+        /* iOS风格按钮 - 应用于 <a> 标签 */
         .action-button {
+            display: block; /* 让a标签表现得像块级元素 */
             width: 100%;
             padding: 16px;
             background: var(--system-blue);
-            color: white;
+            color: white !important; /* 强制白色文字 */
+            text-decoration: none; /* 去掉下划线 */
+            text-align: center; /* 文字居中 */
             border: none;
             border-radius: 12px;
             font-size: 17px;
@@ -96,342 +107,74 @@
             transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
             position: relative;
             overflow: hidden;
+            margin-top: 12px; /* 为按钮之间添加间距 */
+        }
+        
+        /* 第一个按钮不需要顶部间距 */
+        .action-button:first-child {
+            margin-top: 0;
         }
 
         .action-button:active {
             transform: scale(0.98);
             opacity: 0.9;
         }
-
-        .action-button.loading::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, 
-                transparent, 
-                rgba(255, 255, 255, 0.3), 
-                transparent);
-            animation: loadingShimmer 1.5s infinite;
-        }
-
-        .copy-button {
-            background-color: var(--system-green) !important;
-            margin-top: 12px;
-            transition: background-color 0.3s ease;
-        }
-
-        .copy-button.copied {
-            animation: buttonBounce 0.4s ease;
-        }
-
-        @keyframes loadingShimmer {
-            0% { transform: translateX(-100%) }
-            100% { transform: translateX(100%) }
-        }
-
-        @keyframes buttonBounce {
-            0%, 100% { transform: scale(1) }
-            50% { transform: scale(0.96) }
-        }
-
-        .coordinates {
-            margin-top: 20px;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.4, 1);
-        }
-
-        .coordinates.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .coordinate-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--system-gray-5);
-        }
-
-        .coordinate-label {
+        
+        /* 按钮描述性文字（可选） */
+        .button-description {
+            font-size: 13px;
             color: var(--label-secondary);
-            font-size: 15px;
-        }
-
-        .coordinate-value {
-            font-family: 'SF Mono', monospace;
-            font-size: 15px;
-            letter-spacing: -0.2px;
-        }
-
-        #mapContainer {
-            width: 100%;
-            height: 300px;
-            border-radius: 14px;
-            overflow: hidden;
-            margin-top: 16px;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.4, 1);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            border: 0.5px solid rgba(0, 0, 0, 0.08);
-        }
-
-        #mapContainer.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .message {
-            font-size: 15px;
+            margin-top: 4px;
             text-align: center;
-            padding: 12px;
-            border-radius: 12px;
-            display: block;
-            opacity: 0;
-            transform: translateY(-10px);
-            visibility: hidden;
-            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.4, 1);
-            height: 0;
-            margin: 0;
+        }
+        
+        /* 导航按钮容器 */
+        .navigation-links {
+            display: flex;
+            flex-direction: column;
+            gap: 12px; /* 使用gap替代margin-top，更现代 */
         }
 
-        .message.visible {
-            opacity: 1;
-            transform: translateY(0);
-            visibility: visible;
-            height: auto;
-            margin-top: 16px;
-        }
-
-        .error-message {
-            color: var(--system-red);
-            background: rgba(255, 59, 48, 0.1);
-        }
-
-        .success-message {
-            color: var(--system-green);
-            background: rgba(52, 199, 89, 0.1);
-        }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="header">
             <div class="header-icon">
+                <!-- 可以换成更合适的导航图标，这里暂时保留原图标 -->
                 <svg viewBox="0 0 24 24">
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
                 </svg>
             </div>
-            <h1 class="title">精准位置定位</h1>
+            <h1 class="title">位置工具</h1>
         </div>
 
-        <button id="locationButton" class="action-button" onclick="getLocation()">
-            获取我的位置
-        </button>
-
-        <div id="coordinates" class="coordinates">
-            <div class="coordinate-item">
-                <span class="coordinate-label">纬度</span>
-                <span id="latitude" class="coordinate-value">--</span>
-            </div>
-            <div class="coordinate-item">
-                <span class="coordinate-label">经度</span>
-                <span id="longitude" class="coordinate-value">--</span>
-            </div>
-            <div class="coordinate-item" style="border-bottom: none;">
-                <span class="coordinate-label">定位精度</span>
-                <span id="accuracy" class="coordinate-value">-- 米</span>
-            </div>
-            <div class="coordinate-item" style="border-bottom: none; margin-top: 12px;">
-                <button id="copyButton" class="action-button copy-button" onclick="copyCoordinates()">
-                    复制精准坐标
-                </button>
-            </div>
+        <!-- 导航链接 -->
+        <div class="navigation-links">
+            <a href="mark.html" class="action-button">
+                📍 位置标注
+                <!-- <div class="button-description">扫描二维码记录当前位置</div> -->
+            </a>
+            
+            <a href="nav.html" class="action-button">
+                🗺️ 导航功能
+                <!-- <div class="button-description">规划路线或查看方向</div> -->
+            </a>
+            
+            <a href="query.html" class="action-button">
+                🔍 位置查询
+                <!-- <div class="button-description">搜索和查看已标注的位置</div> -->
+            </a>
         </div>
+        
+        <!-- 这个页面不再需要坐标显示、地图容器和消息提示 -->
+        <!-- <div id="coordinates" class="coordinates">...</div> -->
+        <!-- <div id="mapContainer" class="card"></div> -->
+        <!-- <div id="message" class="message"></div> -->
 
-        <div id="message" class="message"></div>
     </div>
 
-    <div id="mapContainer" class="card"></div>
-
-    <script>
-    // 百度地图坐标系转换工具
-    const CoordTransform = {
-        // WGS-84 转 GCJ-02
-        wgs84ToGcj02: function(lng, lat) {
-            if (this.outOfChina(lat, lng)) return [lng, lat];
-            
-            const PI = 3.14159265358979324;
-            const ee = 0.00669342162296594323;
-            
-            let dLat = this.transformLat(lng - 105.0, lat - 35.0);
-            let dLng = this.transformLng(lng - 105.0, lat - 35.0);
-            const radLat = lat / 180.0 * PI;
-            let magic = Math.sin(radLat);
-            magic = 1 - ee * magic * magic;
-            const sqrtMagic = Math.sqrt(magic);
-            dLat = (dLat * 180.0) / ((6378245.0 * (1 - ee)) / (magic * sqrtMagic) * PI);
-            dLng = (dLng * 180.0) / (6378245.0 / sqrtMagic * Math.cos(radLat) * PI);
-            return [lng + dLng, lat + dLat];
-        },
-        
-        // GCJ-02 转 BD-09
-        gcj02ToBd09: function(lng, lat) {
-            const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * Math.PI * 3000.0 / 180.0);
-            const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * Math.PI * 3000.0 / 180.0);
-            return [z * Math.cos(theta) + 0.0065, z * Math.sin(theta) + 0.006];
-        },
-        
-        // WGS-84 直接转 BD-09
-        wgs84ToBd09: function(lng, lat) {
-            const gcj = this.wgs84ToGcj02(lng, lat);
-            return this.gcj02ToBd09(gcj[0], gcj[1]);
-        },
-        
-        outOfChina: function(lat, lng) {
-            return !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55);
-        },
-        
-        transformLat: function(x, y) {
-            const PI = 3.14159265358979324;
-            let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
-            ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
-            ret += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0;
-            ret += (160.0 * Math.sin(y / 12.0 * PI) + 320 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0;
-            return ret;
-        },
-        
-        transformLng: function(x, y) {
-            const PI = 3.14159265358979324;
-            let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
-            ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
-            ret += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0;
-            ret += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0;
-            return ret;
-        }
-    };
-
-    let map = null;
-    let marker = null;
-
-    function getLocation() {
-        const button = document.getElementById('locationButton');
-        const coordinates = document.getElementById('coordinates');
-        const message = document.getElementById('message');
-        
-        message.classList.remove('visible');
-        coordinates.classList.remove('show');
-        button.classList.add('loading');
-        document.getElementById('mapContainer').classList.remove('show');
-
-        if (!navigator.geolocation) {
-            showMessage("您的浏览器不支持地理定位", 'error');
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                const rawLat = position.coords.latitude;
-                const rawLng = position.coords.longitude;
-                
-                // 转换为百度坐标系BD-09
-                const [bdLng, bdLat] = CoordTransform.wgs84ToBd09(rawLng, rawLat);
-                
-                // 显示转换后的坐标
-                document.getElementById('latitude').textContent = bdLat.toFixed(6);
-                document.getElementById('longitude').textContent = bdLng.toFixed(6);
-                document.getElementById('accuracy').textContent = `±${position.coords.accuracy.toFixed(1)} 米`;
-                coordinates.classList.add('show');
-                
-                // 初始化百度地图
-                initBaiduMap(bdLng, bdLat);
-                
-                button.classList.remove('loading');
-            },
-            error => {
-                const errors = {
-                    1: '您拒绝了定位请求',
-                    2: '无法获取位置信息',
-                    3: '定位请求超时'
-                };
-                showMessage(errors[error.code] || '定位服务不可用', 'error');
-                button.classList.remove('loading');
-            },
-            { 
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            }
-        );
-    }
-
-    function initBaiduMap(lng, lat) {
-        const mapContainer = document.getElementById('mapContainer');
-        
-        if (map) {
-            // 百度地图没有destroy方法，直接重新创建
-            mapContainer.innerHTML = '';
-        }
-        
-        // 创建百度地图实例
-        map = new BMap.Map("mapContainer");
-        const point = new BMap.Point(lng, lat);
-        map.centerAndZoom(point, 16);
-        
-        // 添加默认图钉标记
-        marker = new BMap.Marker(point);
-        map.addOverlay(marker);
-        
-        // 启用控件
-        map.addControl(new BMap.NavigationControl());
-        map.addControl(new BMap.ScaleControl());
-        
-        // 显示地图
-        mapContainer.classList.add('show');
-        
-        // 添加地图类型控件
-        map.addControl(new BMap.MapTypeControl({
-            mapTypes: [BMAP_NORMAL_MAP, BMAP_HYBRID_MAP]
-        }));
-    }
-
-    function copyCoordinates() {
-        const btn = document.getElementById('copyButton');
-        const lng = document.getElementById('longitude').textContent;
-        const lat = document.getElementById('latitude').textContent;
-        
-        if (lng === '--' || lat === '--') {
-            showMessage('请先获取位置信息', 'error');
-            return;
-        }
-        
-        navigator.clipboard.writeText(`${lng} ${lat}`).then(() => {
-            btn.classList.add('copied');
-            setTimeout(() => btn.classList.remove('copied'), 400);
-            showMessage('坐标已复制', 'success');
-        }).catch(err => {
-            showMessage('复制失败，请手动复制', 'error');
-        });
-    }
-
-    function showMessage(text, type) {
-        const message = document.getElementById('message');
-        message.textContent = text;
-        message.className = `message ${type}-message`;
-        void message.offsetHeight;
-        message.classList.add('visible');
-
-        if (type === 'success') {
-            setTimeout(() => {
-                message.classList.remove('visible');
-                setTimeout(() => message.textContent = '', 300);
-            }, 1500);
-        }
-    }
-    </script>
+    <!-- 这个页面不再需要JavaScript逻辑 -->
+    <!-- <script> ... </script> -->
 </body>
 </html>
